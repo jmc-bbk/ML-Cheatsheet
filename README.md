@@ -24,8 +24,6 @@ To install these packages on RStudio type the following into the console.
 
 Open the `RCheatSheet.Rmd` file in RStudio to open the entire notebook.
 
-You can press `knit` at the top of the editor to generate the HTML document in this repo.
-
 To try specific segments of code, copy and paste them into the console.
 
 ## Supervised Learning
