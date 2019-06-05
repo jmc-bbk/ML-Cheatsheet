@@ -1,0 +1,314 @@
+---
+title: "Machine Learning Cheatsheet"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+#### Regression
+
+```{r}
+dist <- c(3.4,1.8,4.6,2.3,3.1,5.5,0.7,3.0,2.6,4.3,2.1,1.1,6.1,4.8,3.8)
+dama <- c(26.2,17.8,31.3,23.1,27.5,36.0,14.1,22.3,19.6,31.3,24.0,17.3,43.2,36.4,26.1)
+df <- data.frame(cbind(dist,dama))
+
+m <- lm(dama ~ dist, data = df)
+summary(m)
+
+plot(df$dist,df$dama)
+abline(m)
+
+conf <- predict(m, data.frame(dist=seq(0,100)), interval = 'confidence')
+pred <- predict(m, data.frame(dist=seq(0,100)), interval = 'prediction')
+
+plot(dist, dama, xlab = 'distance', ylab = 'damage', main = 'Confidence and Prediction Intervals')
+abline(m)
+lines(seq(0,100),conf[,'lwr'],col = 'blue', type = 'b', pch = '+')
+lines(seq(0,100),conf[,'upr'],col = 'blue', type = 'b', pch = '+')
+lines(seq(0,100),pred[,'upr'],col = 'red', type = 'b', pch = '*')
+lines(seq(0,100),pred[,'lwr'],col = 'red', type = 'b', pch = '*')
+```
+
+#### Logistic Regression
+
+```{r}
+mydata <- read.csv("https://stats.idre.ucla.edu/stat/data/binary.csv")
+summary(mydata)
+
+mydata$admit <- factor(mydata$admit)
+mydata$rank <- factor(mydata$rank)
+summary(mydata)
+
+m <- glm(admit ~ gre + gpa + rank, data = mydata, family = 'binomial')
+summary(m)
+
+probabilities <- predict(m, mydata, type = 'response')
+predictions <- ifelse(probabilities > 0.5, 1, 0)
+actuals <- mydata$admit
+
+mean(predictions != actuals)
+table(predictions, actuals)
+```
+
+#### Cross Validation
+
+```{r}
+library(ISLR)
+ds <- ISLR::Auto
+m <- lm(mpg ~ horsepower, data = ds)
+predictions <- predict(m, ds)
+mean((ds$mpg-predictions)^2)
+
+ds <- ISLR::Default
+m <- glm(default~balance, data = ds, family = 'binomial')
+probabilities <- predict(m, ds, type = 'response')
+predictions <- ifelse(probabilities>0.5,1,0)
+actuals <- ifelse(ds$default=='Yes',1,0)
+table(predictions, actuals)
+mean(predictions != actuals)
+
+# Validation Set Approach
+
+ds <- ISLR::Auto
+set.seed(1)
+split <- sample(nrow(ds),nrow(ds)/2)
+train <- ds[split,]
+test <- ds[-split,]
+m <- lm(mpg~horsepower, data = train)
+testpredictions <- predict(m,test)
+testmse <- mean((testpredictions-test$mpg)^2); testmse
+```
+
+```{r}
+# Leave One Out Cross Validation
+
+m <- lm(mpg~horsepower, data = ds)
+
+library(boot)
+cverror <- cv.glm(ds, m)
+cverror$delta
+```
+
+```{r}
+# K Fold Cross Validation
+cverror <- cv.glm(ds, m, K = 10)
+cverror$delta
+```
+
+#### Trees
+
+```{r}
+# Regression Trees
+
+ds <- ISLR::Hitters
+ds <- na.omit(ds)
+library(tree)
+
+tree.hitters <- tree(log(Salary)~Years+Hits, data = ds)
+summary(tree.hitters)
+
+plot(tree.hitters)
+text(tree.hitters, pretty = 0)
+y <- predict(tree.hitters, data.frame(Years = 5, Hits = 100))
+```
+
+
+```{r}
+# Pruning
+
+set.seed(1)
+split <- sample(nrow(ds),132)
+
+train <- ds[split,]
+test <- ds[-split,]
+
+t <- tree(log(Salary) ~ Hits + Runs + RBI + Walks + Years + PutOuts + AtBat + Assists + Errors, train)
+
+plot(t)
+text(t, pretty = 0)
+
+ct <- cv.tree(t)
+plot(ct$size, ct$dev, type = 'b')
+
+pt <- prune.tree(t, best = 4)
+plot(pt)
+text(pt, pretty = 0)
+```
+
+```{r}
+# Classification Trees
+
+ds <- ISLR::Carseats
+
+ds$hsales <- factor(ifelse(ds$Sales <= 8,0,1))
+
+t <- tree(hsales ~ . -Sales -hsales, ds)
+summary(t)
+
+plot(t)
+text(t,pretty=0)
+
+set.seed(2)
+indices <- sample(nrow(ds),nrow(ds)/2)
+
+train <- ds[indices,]
+test <- ds[-indices,]
+
+t <- tree(hsales ~ . -Sales -hsales, train)
+p <- predict(t, test, type = 'class')
+
+set.seed(3)
+
+ct <- cv.tree(t, FUN=prune.misclass) # Cross Validation
+pt <- prune.misclass(t, best = 9) # Prune to 9 terminal nodes
+```
+
+#### Bagging & Random Forests
+
+```{r}
+library(MASS)
+library(randomForest)
+
+d <- MASS::Boston
+
+set.seed(1)
+index <- sample(nrow(Boston),nrow(Boston)/2)
+train <- d[index,]
+test <- d[-index,]
+
+set.seed(50)
+bb <- randomForest(medv ~ .-medv, train, mtry = 13, importance = TRUE); bb
+
+p <- predict(bb, test) # Predictions
+a <- test$medv # Actuals
+
+plot(p,a)
+abline(0,1)
+
+mse <- mean((p-a)^2); mse
+
+d <- ISLR::Carseats
+
+d$High <- factor(ifelse(d$Sales<=8,0,1))
+
+set.seed(1)
+index <- sample(nrow(d),nrow(d)/2)
+train <- d[index,]
+test <- d[-index,]
+
+set.seed(2)
+bb <- randomForest(High ~ . -Sales - High, train, mtry = 10)
+
+p <- predict(bb, test) # predictions
+a <- test$High # actuals
+
+table(p,a)
+
+mean(p!=a)
+
+importance(bb)
+varImpPlot(bb)
+```
+
+```{r}
+# Comparing different levels of mtry
+
+a <- test$High
+mse <- rep(0,10)
+for (i in 1:10){
+  set.seed(5)
+  rb <- randomForest(High ~ . -Sales - High, train, mtry=i)
+  p <- predict(rb, test)
+  mse[i] <- mean((p!=a))
+}
+
+plot(mse,xlab='mtry',ylab='mse',type='b')
+
+```
+
+#### SVMs
+
+```{r}
+set.seed(1)
+x <- matrix(rnorm(20*2),ncol=2)
+y <- c(rep(-1,10),rep(1,10))
+d <- data.frame(x=x,y=as.factor(y))
+
+library(e1071)
+s <- svm(y ~ ., d, kernel = 'linear', cost = 10, scale = FALSE)
+summary(s)
+
+set.seed(1)
+t <- tune(svm, y ~ ., data = d, kernel = 'linear', ranges = list(cost = c(0.001,0.01,0.1,1,5,10,100)))
+summary
+
+bm <- t$best.model
+summary(bm)
+```
+
+```{r}
+s <- svm(y ~ ., d, kernel = 'radial', gamma = 1, cost = 10, scale = FALSE)
+summary(s)
+
+set.seed(1)
+t <- tune(svm, y ~ ., data = d, kernel = 'radial', ranges = list(cost = c(0.1,1,1,10,100,1000), gamma = c(0.5,1,2,3,4)))
+```
+
+#### Clustering
+
+```{r}
+set.seed(2)
+x <- matrix(rnorm(50*2),ncol=2)
+x[1:25,1] <- x[1:25,1]+3
+x[1:25,2] <- x[1:25,2]-4
+plot(x)
+
+k <- kmeans(x,2,nstart=20); k
+k$cluster # Assigned Clusters
+plot(x, col=(k$cluster+1), pch = 20, cex = 2)
+```
+
+
+```{r}
+hc <- hclust(dist(x),method = 'complete')
+ha <- hclust(dist(x),method = 'average')
+hs <- hclust(dist(x),method = 'single')
+
+plot(hc, main = 'Complete Linkage')
+cutree(hc,2)
+
+y <- scale(x)
+par(mfrow=c(1,2))
+plot(hclust(dist(y),method='complete'), main = 'Scaled')
+plot(hclust(dist(x),method='complete'), main = 'Not scaled')
+```
+
+#### Principal Component Analysis
+
+```{r}
+x <- c(2.5,0.5,2.2,1.9,3.1,2.3,2,1,1.5,1.1)
+y <- c(2.4,0.7,2.9,2.2,3.0,2.7,1.6,1.1,1.6,0.9)
+d <- data.frame(x,y)
+
+p <- prcomp(d, scale = FALSE); p
+
+p$rotation
+p$center # centre of the new coordinates
+p$scale
+p$sdev
+p$sdev^2 # eigenvalues
+
+biplot(p, scale = FALSE)
+```
+
+```{r}
+d <- data.frame(maths = c(80,90,95),science = c(85,85,80),
+                english = c(60,70,40), music = c(55,45,50))
+p <- prcomp(d, scale = FALSE)
+p$rotation
+biplot(p, scale = FALSE)
+
+pve <- p$sdev^2/sum(p$sdev^2)
+plot(pve, xlab = 'Principal Component', ylab = 'Prop. Variance Explained', main = 'Scree plot', type = 'b')
+```
